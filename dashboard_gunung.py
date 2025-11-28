@@ -24,18 +24,18 @@ scaler = joblib.load("scaler.pkl")
 mlp_model = load_model("mlp_model_gunung.h5", compile=False)
 
 # ===============================
-# 3️⃣ Judul & Form Input
+# 3️⃣ Sidebar Input User
 # ===============================
-st.title("Sistem Rekomendasi Gunung di Pulau Jawa (CBF + MLP Ranking)")
-st.write("Isi preferensi pendakian di bawah ini dan klik **Oke** untuk melihat rekomendasi gunung:")
+st.sidebar.header("Pilih Preferensi Pendakian")
 
-with st.form(key="form_input"):
-    province = st.selectbox("Provinsi:", options=df['Province'].unique())
-    difficulty = st.selectbox("Tingkat Kesulitan:", options=df['difficulty_level'].unique())
-    duration = st.slider("Durasi Pendakian (jam):", 0, 12, 4)
-    level = st.selectbox("Level Pendaki:", options=df['recommended_for'].unique())
-    max_distance = st.slider("Jarak Maksimal (km):", 0, 50, 10)
-    submit_button = st.form_submit_button(label="Oke")
+province = st.sidebar.selectbox("Provinsi:", options=df['Province'].unique())
+difficulty = st.sidebar.selectbox("Tingkat Kesulitan:", options=df['difficulty_level'].unique())
+duration = st.sidebar.slider("Durasi Pendakian (jam):", 0, 12, 4)
+level = st.sidebar.selectbox("Level Pendaki:", options=df['recommended_for'].unique())
+max_distance = st.sidebar.slider("Jarak Maksimal (km):", 0, 50, 10)
+
+# Tombol submit di sidebar
+submit_button = st.sidebar.button("Tampilkan Rekomendasi")
 
 # ===============================
 # 4️⃣ Fungsi Content-Based Filtering
@@ -66,7 +66,7 @@ def content_based_recommendation(user_input, df, top_n=5):
     return top_gunung
 
 # ===============================
-# 5️⃣ Proses setelah klik Oke
+# 5️⃣ Proses setelah klik tombol
 # ===============================
 if submit_button:
     user_input = {
@@ -91,7 +91,8 @@ if submit_button:
     # ===============================
     # 6️⃣ Tampilkan Rekomendasi
     # ===============================
-    st.subheader("🏔 Rekomendasi Gunung")
+    st.title("🏔 Rekomendasi Gunung di Pulau Jawa")
+
     for idx, row in top_gunung.iterrows():
         st.markdown(f"### {row['Name']}")
         st.write(f"**Provinsi:** {row['Province']}")
@@ -99,7 +100,7 @@ if submit_button:
         st.write(f"**Difficulty:** {row['difficulty_level']}")
         st.write(f"**Hiking Duration:** {row['hiking_duration_hours']:.2f} jam")
         st.write(f"**Recommended for:** {row['recommended_for']}")
-        st.image(row['image_url'], width=200)
+        st.image(row['image_url'], width=500)  # gambar lebih besar
 
         maps_url = f"https://www.google.com/maps/search/?api=1&query={row['Latitude']},{row['Longitude']}"
         if st.button(f"Buka {row['Name']} di Google Maps", key=idx):
