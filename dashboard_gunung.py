@@ -8,7 +8,6 @@ import joblib
 from sklearn.metrics.pairwise import cosine_similarity
 from tensorflow.keras.models import load_model
 import pydeck as pdk
-import webbrowser
 
 # ===============================
 # 2️⃣ Load Dataset & Models
@@ -20,7 +19,7 @@ le_diff = joblib.load("le_diff.pkl")
 le_level = joblib.load("le_level.pkl")
 scaler = joblib.load("scaler.pkl")
 
-# Load MLP tanpa compile
+# Load MLP tanpa compile untuk menghindari error
 mlp_model = load_model("mlp_model_gunung.h5", compile=False)
 
 # ===============================
@@ -34,13 +33,13 @@ duration = st.sidebar.slider("Durasi Pendakian (jam):", 0, 12, 4)
 level = st.sidebar.selectbox("Level Pendaki:", options=df['recommended_for'].unique())
 max_distance = st.sidebar.slider("Jarak Maksimal (km):", 0, 50, 10)
 
-# Tombol submit di sidebar
-submit_button = st.sidebar.button("Tampilkan Rekomendasi")
+# Tombol tampilkan rekomendasi
+tampilkan = st.sidebar.button("Tampilkan Rekomendasi")
 
 # ===============================
 # 4️⃣ Fungsi Content-Based Filtering
 # ===============================
-def content_based_recommendation(user_input, df, top_n=5):
+def content_based_recommendation(user_input, df, top_n=10):
     user_scaled = scaler.transform([[user_input['elevation_m'],
                                      user_input['hiking_duration_hours'],
                                      user_input['distance_km'],
@@ -66,9 +65,10 @@ def content_based_recommendation(user_input, df, top_n=5):
     return top_gunung
 
 # ===============================
-# 5️⃣ Proses setelah klik tombol
+# 5️⃣ Jalankan hanya jika tombol diklik
 # ===============================
-if submit_button:
+if tampilkan:
+    # Buat User Input Dictionary
     user_input = {
         'elevation_m': df['elevation_m'].median(),
         'hiking_duration_hours': duration,
@@ -81,35 +81,39 @@ if submit_button:
     # Hitung Top Kandidat CBF
     candidate_gunung = content_based_recommendation(user_input, df, top_n=20)
 
-    # Hitung Skor MLP
+    # Hitung Skor MLP untuk Ranking
     features = ['elevation_scaled','duration_scaled','distance_scaled','gain_scaled','difficulty_encoded','level_encoded']
     candidate_gunung['mlp_score'] = mlp_model.predict(candidate_gunung[features]).flatten()
 
     # Ranking berdasarkan MLP
-    top_gunung = candidate_gunung.sort_values('mlp_score', ascending=False).head(5)
+    top_n = 5  # otomatis top 5
+    top_gunung = candidate_gunung.sort_values('mlp_score', ascending=False).head(top_n)
 
     # ===============================
     # 6️⃣ Tampilkan Rekomendasi
     # ===============================
-    st.title("🏔 Rekomendasi Gunung di Pulau Jawa")
+    st.title("Sistem Rekomendasi Gunung di Pulau Jawa (CBF + MLP Ranking)")
 
     for idx, row in top_gunung.iterrows():
-        st.markdown(f"### {row['Name']}")
-        st.write(f"**Provinsi:** {row['Province']}")
-        st.write(f"**Elevation:** {row['elevation_m']} m")
-        st.write(f"**Difficulty:** {row['difficulty_level']}")
-        st.write(f"**Hiking Duration:** {row['hiking_duration_hours']:.2f} jam")
-        st.write(f"**Recommended for:** {row['recommended_for']}")
-        st.image(row['image_url'], width=500)  # gambar lebih besar
+        st.subheader(row['Name'])
+        st.write(f"Provinsi: {row['Province']}")
+        st.write(f"Elevation: {row['elevation_m']} m")
+        st.write(f"Difficulty: {row['difficulty_level']}")
+        st.write(f"Hiking Duration: {row['hiking_duration_hours']:.2f} jam")
+        st.write(f"Recommended for: {row['recommended_for']}")
 
+        # Gambar lebih besar
+        st.image(row['image_url'], width=400)
+
+        # Link Google Maps
         maps_url = f"https://www.google.com/maps/search/?api=1&query={row['Latitude']},{row['Longitude']}"
-        if st.button(f"Buka {row['Name']} di Google Maps", key=idx):
-            webbrowser.open_new_tab(maps_url)
+        st.markdown(f"[Buka {row['Name']} di Google Maps]({maps_url})", unsafe_allow_html=True)
 
     # ===============================
-    # 7️⃣ Map Interaktif
+    # 7️⃣ Map Interaktif dengan Pydeck
     # ===============================
-    st.subheader("📍 Lokasi Gunung Rekomendasi di Peta")
+    st.subheader("Lokasi Gunung Rekomendasi di Peta")
+
     layer = pdk.Layer(
         "ScatterplotLayer",
         data=top_gunung,
