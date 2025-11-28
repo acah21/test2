@@ -8,6 +8,7 @@ import joblib
 from sklearn.metrics.pairwise import cosine_similarity
 from tensorflow.keras.models import load_model
 import pydeck as pdk
+import webbrowser
 
 # ===============================
 # 2️⃣ Load Dataset & Models
@@ -19,25 +20,27 @@ le_diff = joblib.load("le_diff.pkl")
 le_level = joblib.load("le_level.pkl")
 scaler = joblib.load("scaler.pkl")
 
-# Load MLP tanpa compile untuk menghindari error mse
+# Load MLP tanpa compile
 mlp_model = load_model("mlp_model_gunung.h5", compile=False)
 
 # ===============================
-# 3️⃣ Sidebar Input User
+# 3️⃣ Judul & Form Input
 # ===============================
-st.sidebar.header("Pilih Preferensi Pendakian")
+st.title("Sistem Rekomendasi Gunung di Pulau Jawa (CBF + MLP Ranking)")
+st.write("Isi preferensi pendakian di bawah ini dan klik **Oke** untuk melihat rekomendasi gunung:")
 
-province = st.sidebar.selectbox("Provinsi:", options=df['Province'].unique())
-difficulty = st.sidebar.selectbox("Tingkat Kesulitan:", options=df['difficulty_level'].unique())
-duration = st.sidebar.slider("Durasi Pendakian (jam):", 0, 12, 4)
-level = st.sidebar.selectbox("Level Pendaki:", options=df['recommended_for'].unique())
-max_distance = st.sidebar.slider("Jarak Maksimal (km):", 0, 50, 10)
-top_n = st.sidebar.slider("Jumlah Rekomendasi:", 1, 10, 5)
+with st.form(key="form_input"):
+    province = st.selectbox("Provinsi:", options=df['Province'].unique())
+    difficulty = st.selectbox("Tingkat Kesulitan:", options=df['difficulty_level'].unique())
+    duration = st.slider("Durasi Pendakian (jam):", 0, 12, 4)
+    level = st.selectbox("Level Pendaki:", options=df['recommended_for'].unique())
+    max_distance = st.slider("Jarak Maksimal (km):", 0, 50, 10)
+    submit_button = st.form_submit_button(label="Oke")
 
 # ===============================
 # 4️⃣ Fungsi Content-Based Filtering
 # ===============================
-def content_based_recommendation(user_input, df, top_n=10):
+def content_based_recommendation(user_input, df, top_n=5):
     user_scaled = scaler.transform([[user_input['elevation_m'],
                                      user_input['hiking_duration_hours'],
                                      user_input['distance_km'],
@@ -63,77 +66,72 @@ def content_based_recommendation(user_input, df, top_n=10):
     return top_gunung
 
 # ===============================
-# 5️⃣ Buat User Input Dictionary
+# 5️⃣ Proses setelah klik Oke
 # ===============================
-user_input = {
-    'elevation_m': df['elevation_m'].median(),
-    'hiking_duration_hours': duration,
-    'distance_km': max_distance,
-    'Elevation_gain': df['Elevation_gain'].median(),
-    'difficulty_level': difficulty,
-    'recommended_for': level
-}
-
-# ===============================
-# 6️⃣ Hitung Top Kandidat CBF
-# ===============================
-candidate_gunung = content_based_recommendation(user_input, df, top_n=20)
-
-# ===============================
-# 7️⃣ Hitung Skor MLP untuk Ranking
-# ===============================
-features = ['elevation_scaled','duration_scaled','distance_scaled','gain_scaled','difficulty_encoded','level_encoded']
-candidate_gunung['mlp_score'] = mlp_model.predict(candidate_gunung[features]).flatten()
-
-# Ranking berdasarkan MLP
-top_gunung = candidate_gunung.sort_values('mlp_score', ascending=False).head(top_n)
-
-# ===============================
-# 8️⃣ Tampilkan Rekomendasi
-# ===============================
-st.title("Sistem Rekomendasi Gunung di Pulau Jawa (CBF + MLP Ranking)")
-
-for idx, row in top_gunung.iterrows():
-    st.subheader(row['Name'])
-    st.write(f"Provinsi: {row['Province']}")
-    st.write(f"Elevation: {row['elevation_m']} m")
-    st.write(f"Difficulty: {row['difficulty_level']}")
-    st.write(f"Hiking Duration: {row['hiking_duration_hours']} jam")
-    st.write(f"Recommended for: {row['recommended_for']}")
-    st.image(row['image_url'], width=200)
-    
-    # Link ke Google Maps
-    maps_url = f"https://www.google.com/maps/search/?api=1&query={row['Latitude']},{row['Longitude']}"
-    st.markdown(f"[Buka {row['Name']} di Google Maps]({maps_url})")
-
-# ===============================
-# 9️⃣ Map Interaktif dengan Pydeck
-# ===============================
-st.subheader("Lokasi Gunung Rekomendasi di Peta")
-
-layer = pdk.Layer(
-    "ScatterplotLayer",
-    data=top_gunung,
-    get_position='[Longitude, Latitude]',
-    get_color='[200, 30, 0, 160]',
-    get_radius=5000,
-    pickable=True
-)
-
-view_state = pdk.ViewState(
-    latitude=top_gunung['Latitude'].mean(),
-    longitude=top_gunung['Longitude'].mean(),
-    zoom=6,
-    pitch=0
-)
-
-deck = pdk.Deck(
-    map_style='mapbox://styles/mapbox/light-v9',
-    initial_view_state=view_state,
-    layers=[layer],
-    tooltip={
-        "text": "{Name}\nProvinsi: {Province}\nElevation: {elevation_m} m\nDifficulty: {difficulty_level}\nDuration: {hiking_duration_hours} jam"
+if submit_button:
+    user_input = {
+        'elevation_m': df['elevation_m'].median(),
+        'hiking_duration_hours': duration,
+        'distance_km': max_distance,
+        'Elevation_gain': df['Elevation_gain'].median(),
+        'difficulty_level': difficulty,
+        'recommended_for': level
     }
-)
 
-st.pydeck_chart(deck)
+    # Hitung Top Kandidat CBF
+    candidate_gunung = content_based_recommendation(user_input, df, top_n=20)
+
+    # Hitung Skor MLP
+    features = ['elevation_scaled','duration_scaled','distance_scaled','gain_scaled','difficulty_encoded','level_encoded']
+    candidate_gunung['mlp_score'] = mlp_model.predict(candidate_gunung[features]).flatten()
+
+    # Ranking berdasarkan MLP
+    top_gunung = candidate_gunung.sort_values('mlp_score', ascending=False).head(5)
+
+    # ===============================
+    # 6️⃣ Tampilkan Rekomendasi
+    # ===============================
+    st.subheader("🏔 Rekomendasi Gunung")
+    for idx, row in top_gunung.iterrows():
+        st.markdown(f"### {row['Name']}")
+        st.write(f"**Provinsi:** {row['Province']}")
+        st.write(f"**Elevation:** {row['elevation_m']} m")
+        st.write(f"**Difficulty:** {row['difficulty_level']}")
+        st.write(f"**Hiking Duration:** {row['hiking_duration_hours']:.2f} jam")
+        st.write(f"**Recommended for:** {row['recommended_for']}")
+        st.image(row['image_url'], width=200)
+
+        maps_url = f"https://www.google.com/maps/search/?api=1&query={row['Latitude']},{row['Longitude']}"
+        if st.button(f"Buka {row['Name']} di Google Maps", key=idx):
+            webbrowser.open_new_tab(maps_url)
+
+    # ===============================
+    # 7️⃣ Map Interaktif
+    # ===============================
+    st.subheader("📍 Lokasi Gunung Rekomendasi di Peta")
+    layer = pdk.Layer(
+        "ScatterplotLayer",
+        data=top_gunung,
+        get_position='[Longitude, Latitude]',
+        get_color='[200, 30, 0, 160]',
+        get_radius=5000,
+        pickable=True
+    )
+
+    view_state = pdk.ViewState(
+        latitude=top_gunung['Latitude'].mean(),
+        longitude=top_gunung['Longitude'].mean(),
+        zoom=6,
+        pitch=0
+    )
+
+    deck = pdk.Deck(
+        map_style='mapbox://styles/mapbox/streets-v11',
+        initial_view_state=view_state,
+        layers=[layer],
+        tooltip={
+            "text": "{Name}\nProvinsi: {Province}\nElevation: {elevation_m} m\nDifficulty: {difficulty_level}\nDuration: {hiking_duration_hours:.2f} jam"
+        }
+    )
+
+    st.pydeck_chart(deck)
